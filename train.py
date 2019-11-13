@@ -13,13 +13,13 @@ class Net(nn.Module):
     def __init__(self, dicSize, outSize):
         super(Net, self).__init__()
 
-        self.fc1 = nn.Linear(dicSize, int(dicSize*20))
-        #self.fc2 = nn.Linear(int(dicSize/4), int(dicSize/16)).to(device)
-        self.fc3 = nn.Linear(int(dicSize*20), outSize)
+        self.fc1 = nn.Linear(dicSize, int(dicSize*1000))
+        self.fc2 = nn.Linear(int(dicSize*1000), int(dicSize*200))
+        self.fc3 = nn.Linear(int(dicSize*200), outSize)
    
     def forward(self, x):
         x = F.relu(self.fc1(x))
-        #x = F.relu(self.fc2(x)).to(device)
+        x = F.relu(self.fc2(x))
         x = self.fc3(x)
         return F.log_softmax(x)
 
@@ -27,8 +27,8 @@ class Net(nn.Module):
 #####################
 ####nn parameters####
 #####################
-batch_size = 200
-learning_rate = 0.01
+batch_size = 2000
+learning_rate = 0.0001
 epochs = 10
 log_interval = 5
 #####################
@@ -39,7 +39,7 @@ fireOutClasses = len(set(fireDataset[-1][0].tolist()))
 net = Net(fireDatasetSize, fireOutClasses+1).to(device)
 
 # Осуществляем оптимизацию путем стохастического градиентного спуска
-optimizer = optim.SGD(net.parameters(), lr=learning_rate, momentum=0.9)
+optimizer = optim.SGD(net.parameters(), lr=learning_rate, momentum=0)
 # Создаем функцию потерь
 criterion = nn.NLLLoss()
 
