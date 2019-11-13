@@ -3,8 +3,8 @@ import urllib.request
 import asyncio
 import wget
 
-yearStart = 2012
-yearStop = 2017
+yearStart = 2017
+yearStop = 2018
 
 urls_to_download = []
 
