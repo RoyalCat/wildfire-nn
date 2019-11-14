@@ -22,6 +22,16 @@ class Net(nn.Module):
         x = self.fc3(x)
         return F.log_softmax(x)
 
+    
+#####################
+####nn parameters####
+#####################
+batch_size = 2000
+learning_rate = 0.00001
+epochs = 10
+log_interval = 5
+#####################
+
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 @monitor("fire testing")
@@ -31,7 +41,7 @@ def test(net):
     fireTestDataset = torch.load("fireTestDataset")
     fireTestDatasetSize = fireTestDataset[0][0].size(0)
 
-    test_loader = torch.utils.data.DataLoader(fireTestDataset)
+    test_loader = torch.utils.data.DataLoader(fireTestDataset, batch_size=batch_size, shuffle=True)
     test_loss = 0
     correct = 0
     for data, target in test_loader:
@@ -50,5 +60,5 @@ def test(net):
         test_loss, correct, len(test_loader.dataset),
         100. * correct / len(test_loader.dataset)))
 
-model = torch.load('net.model')
+model = torch.load('net.model', map_location=device)
 test(model)

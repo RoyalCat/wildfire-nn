@@ -69,7 +69,7 @@ if os.path.isfile('wildfires_dataset.csv') == False:
     df_features = df_features.dropna()
     df_features.to_csv("wildfires_dataset.csv")
 else:
-    df_features = pandas.read_csv("wildfires_dataset.csv")
+    df_features = pandas.read_csv("wildfires_dataset.csv", index_col=0)
     
 
 if os.path.isfile('wildfires_test_dataset.csv') == False:
@@ -94,8 +94,10 @@ if os.path.isfile('wildfires_test_dataset.csv') == False:
     df_test_features = df_test_features.dropna()
     df_test_features.to_csv("wildfires_test_dataset.csv")
 else:
-    df_test_features = pandas.read_csv("wildfires_test_dataset.csv")
+    df_test_features = pandas.read_csv("wildfires_test_dataset.csv", index_col=0)
 
+
+print(df_features.head())
 
 fireDatas = torch.Tensor(df_features.drop(columns='fire_type').values)
 fireTypes = torch.Tensor(df_features['fire_type'].tolist())

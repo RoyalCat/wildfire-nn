@@ -6,54 +6,92 @@ from torch.autograd import Variable
 from torch.utils.data import Dataset
 import numpy as np
 from hyperdash import monitor
+from hyperdash import Experiment
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 class Net(nn.Module):
 
-    def __init__(self, dicSize, outSize):
+    def __init__(self, in_features, out_features):
         super(Net, self).__init__()
 
-        self.fc1 = nn.Linear(dicSize, int(dicSize*1000))
-        self.fc2 = nn.Linear(int(dicSize*1000), int(dicSize*200))
-        self.fc3 = nn.Linear(int(dicSize*200), outSize)
+        self.fc1 = nn.Linear(in_features, in_features*100)
+        self.fc2 = nn.Linear(in_features*100, in_features*100)
+        self.fc4 = nn.Linear(in_features*100, out_features)
    
     def forward(self, x):
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
-        x = self.fc3(x)
+        x = self.fc4(x)
         return F.log_softmax(x)
 
-    
-#####################
-####nn parameters####
-#####################
-batch_size = 2000
-learning_rate = 0.00001
-epochs = 10
-log_interval = 5
-#####################
 
-fireDataset = torch.load("fireDataset")
-fireDatasetSize = fireDataset[0][0].size(0)
-fireOutClasses = len(set(fireDataset[-1][0].tolist()))
+def test(net, criterion, batch_size, test_dataset):
+    fireTestDatasetSize = fireTestDataset[0][0].size(0)
 
-net = Net(fireDatasetSize, fireOutClasses+1).to(device)
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
+    test_loss = 0
+    correct = 0
+    for data, target in test_loader:
+        torch.no_grad()
+        data = Variable(data).type(torch.FloatTensor).to(device)
+        target = Variable(target).type(torch.LongTensor).to(device)
+        data = data.view(-1, fireTestDatasetSize)
+        net_out = net(data)
+        # Суммируем потери со всех партий
+        test_loss += criterion(net_out, target).data
+        pred = net_out.data.max(1)[1]  # получаем индекс максимального значения
+        correct += pred.eq(target.data).sum()
 
-@monitor("fire training")
-def train():
+    acc = int(correct)/len(test_loader.dataset)
+    test_loss /= len(test_loader.dataset)
+    print('Test set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
+        test_loss, correct, len(test_loader.dataset),
+        100. * acc))
+    return acc
 
-    # Осуществляем оптимизацию путем стохастического градиентного спуска
-    optimizer = optim.SGD(net.parameters(), lr=learning_rate, momentum=0.9)
-    # Создаем функцию потерь
+@monitor("WildFire InfTraining")
+def trainToAcc(needed_accuracy, train_dataset, test_dataset, net_file=None, exp=None):
+
+    learning_rate = exp.param("learning rate", 0.0000001)
+    batch_size = exp.param("batch size", 4000)
+    epoch_limit = exp.param("epoch limit", 100000)
+    log_interval = exp.param("log interval", 15)
+
+    momentum = exp.param("momentum", 0)
+
+    InputSize = exp.param("Input size", int(train_dataset[0][0].size(0)))
+    OutClasses = exp.param("Out Classes", len(set(train_dataset.tensors[1].tolist())))
+    net = Net(InputSize, OutClasses+1).to(device)
+
+    optimizer = optim.SGD(net.parameters(), lr=learning_rate, momentum=momentum)
+
     criterion = nn.NLLLoss()
 
-    train_loader = torch.utils.data.DataLoader(fireDataset, batch_size=batch_size, shuffle=True)
-    # запускаем главный тренировочный цикл
-    for epoch in range(epochs):
+    if net_file == None:
+        epoch = 0
+        accuracy = 0
+    else:
+        checkpoint = torch.load(net_file)
+        net.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        epoch = checkpoint['epoch']
+        loss = checkpoint['loss']
+        accuracy = test(net, criterion, batch_size, test_dataset)
+        exp.param("loaded accuracy", accuracy)
+        exp.metric("accuracy", accuracy)
+        print("model: " + net_file + "loaded!")
+
+    
+
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+
+    
+
+    while accuracy < needed_accuracy and epoch < epoch_limit:
         for batch_idx, (data, target) in enumerate(train_loader):
             data = Variable(data).type(torch.FloatTensor).to(device)
             target = Variable(target).type(torch.LongTensor).to(device)
-            data = data.view(-1, fireDatasetSize)
+            data = data.view(-1, InputSize)
             optimizer.zero_grad()
             net_out = net(data)
             loss = criterion(net_out, target)
@@ -63,7 +101,26 @@ def train():
                 print('Train Epoch: {} [{}/{} ({:.0f}%)]tLoss: {:.6f}'.format(
                         epoch, batch_idx * len(data), len(train_loader.dataset),
                         100. * batch_idx / len(train_loader), loss.data))
+                #if loss < 10:
+                exp.metric("tLoss", float(loss.data))
+                        
+        accuracy = test(net, criterion, batch_size, test_dataset)
+        exp.metric("accuracy", accuracy)
+        exp.metric("epoch", epoch)
+        epoch += 1
+        torch.save(net, "net.model")
+        torch.save({
+            'epoch': epoch,
+            'model_state_dict': net.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'loss': loss,
+            }, "net.checkpoint")
 
-    torch.save(net, "net.model")
 
-train()
+fireDataset = torch.load("fireDataset")
+fireTestDataset = torch.load("fireTestDataset")
+trainToAcc(0.5, fireDataset, fireTestDataset, "net.checkpoint")
+
+
+
+
