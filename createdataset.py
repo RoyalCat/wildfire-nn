@@ -4,9 +4,10 @@ import requests
 import datetime
 import numpy as np
 from tqdm import tqdm
-import torch
-from torch.utils import data
+#import torch
+#from torch.utils import data
 import os
+from sklearn.preprocessing import Normalizer
 
 
 def extract_features(row):
@@ -31,8 +32,6 @@ def extract_features(row):
 
     return {
         'fire_type': row['fire_type'],
-        'day': int(day),
-        'month': int(month),
         'temperature': v.air.values.item(0),
         'humidity': v.rhum.values.item(0),
         'uwind': v.uwnd.values.item(0),
@@ -67,7 +66,10 @@ if os.path.isfile('wildfires_dataset.csv') == False:
         df_features.append(features)
     df_features = pandas.DataFrame(df_features)
     df_features = df_features.dropna()
-    df_features.to_csv("wildfires_dataset.csv")
+    df_train_data = df_features.drop(columns='fire_type')
+    df_train_data.iloc[:,:] = Normalizer(norm='l1').fit_transform(df_train_data)
+    df_train_data['fire_type'] = df_features['fire_type']
+    df_train_data.to_csv("wildfires_dataset.csv")
 else:
     df_features = pandas.read_csv("wildfires_dataset.csv", index_col=0)
     
@@ -92,19 +94,20 @@ if os.path.isfile('wildfires_test_dataset.csv') == False:
         df_test_features.append(features)
     df_test_features = pandas.DataFrame(df_test_features)
     df_test_features = df_test_features.dropna()
-    df_test_features.to_csv("wildfires_test_dataset.csv")
+    df_test_data = df_test_features.drop(columns='fire_type')
+    df_test_data.iloc[:,:] = Normalizer(norm='l1').fit_transform(df_test_data)
+    df_test_data['fire_type'] = df_test_features['fire_type']
+    df_test_data.to_csv("wildfires_test_dataset.csv")
 else:
     df_test_features = pandas.read_csv("wildfires_test_dataset.csv", index_col=0)
 
 
-print(df_features.head())
-
-fireDatas = torch.Tensor(df_features.drop(columns='fire_type').values)
+fireDatas = torch.Tensor(df_train_data.values)
 fireTypes = torch.Tensor(df_features['fire_type'].tolist())
 fireDataset = data.TensorDataset(fireDatas, fireTypes)
 torch.save(fireDataset, "fireDataset")
 
-fireTestDatas = torch.Tensor(df_test_features.drop(columns='fire_type').values)
+fireTestDatas = torch.Tensor(df_test_data.values)
 fireTestTypes = torch.Tensor(df_test_features['fire_type'].tolist())
 fireTestDataset = data.TensorDataset(fireTestDatas, fireTestTypes)
 torch.save(fireTestDataset, "fireTestDataset")

@@ -8,15 +8,17 @@ import numpy as np
 from hyperdash import monitor
 from hyperdash import Experiment
 
+
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+print(device)
 class Net(nn.Module):
 
     def __init__(self, in_features, out_features):
         super(Net, self).__init__()
 
-        self.fc1 = nn.Linear(in_features, in_features*100)
-        self.fc2 = nn.Linear(in_features*100, in_features*100)
-        self.fc4 = nn.Linear(in_features*100, out_features)
+        self.fc1 = nn.Linear(in_features, in_features)
+        self.fc2 = nn.Linear(in_features, int(in_features/2))
+        self.fc4 = nn.Linear(int(in_features/2), out_features)
    
     def forward(self, x):
         x = F.relu(self.fc1(x))
@@ -52,18 +54,18 @@ def test(net, criterion, batch_size, test_dataset):
 @monitor("WildFire InfTraining")
 def trainToAcc(needed_accuracy, train_dataset, test_dataset, net_file=None, exp=None):
 
-    learning_rate = exp.param("learning rate", 0.0000001)
+    learning_rate = exp.param("learning rate", 0.00001)
     batch_size = exp.param("batch size", 4000)
     epoch_limit = exp.param("epoch limit", 100000)
     log_interval = exp.param("log interval", 15)
 
-    momentum = exp.param("momentum", 0)
+    momentum = exp.param("momentum", 0.9)
 
     InputSize = exp.param("Input size", int(train_dataset[0][0].size(0)))
     OutClasses = exp.param("Out Classes", len(set(train_dataset.tensors[1].tolist())))
     net = Net(InputSize, OutClasses+1).to(device)
 
-    optimizer = optim.SGD(net.parameters(), lr=learning_rate, momentum=momentum)
+    optimizer = optim.Adam(net.parameters(), lr=learning_rate)
 
     criterion = nn.NLLLoss()
 
@@ -103,23 +105,22 @@ def trainToAcc(needed_accuracy, train_dataset, test_dataset, net_file=None, exp=
                         100. * batch_idx / len(train_loader), loss.data))
                 #if loss < 10:
                 exp.metric("tLoss", float(loss.data))
-                        
-        accuracy = test(net, criterion, batch_size, test_dataset)
-        exp.metric("accuracy", accuracy)
-        exp.metric("epoch", epoch)
+        if epoch % 2 == 0:             
+            accuracy = test(net, criterion, batch_size, test_dataset)
+            exp.metric("accuracy", accuracy)
+            exp.metric("epoch", epoch)
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': net.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'loss': loss,
+                }, "net.checkpoint")
         epoch += 1
-        torch.save(net, "net.model")
-        torch.save({
-            'epoch': epoch,
-            'model_state_dict': net.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'loss': loss,
-            }, "net.checkpoint")
 
 
 fireDataset = torch.load("fireDataset")
 fireTestDataset = torch.load("fireTestDataset")
-trainToAcc(0.5, fireDataset, fireTestDataset, "net.checkpoint")
+trainToAcc(0.5, fireDataset, fireTestDataset)
 
 
 
